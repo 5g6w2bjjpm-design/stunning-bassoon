@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sax Fingering Trainer</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin:0; padding:16px; max-width: 980px; margin-inline:auto; }
+    h1 { margin:0 0 10px; font-size: 20px; }
+    .pill { border:1px solid #ddd; border-radius:999px; padding:6px 10px; font-size: 13px; display:inline-block; }
+    .card { border:1px solid #ddd; border-radius:12px; padding:12px; margin-top:12px; }
+    .btnrow { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+    button { border:1px solid #ccc; border-radius:10px; padding:10px 12px; background:#fff; cursor:pointer; }
+    button:active { transform: translateY(1px); }
+
+    .diagramWrap{
+      position: relative;
+      width: 100%;
+      max-width: 520px;
+      margin-inline: auto;
+      touch-action: manipulation;
+    }
+    .diagramWrap img{
+      width: 100%;
+      height: auto;
+      display:block;
+      border-radius: 12px;
+      border: 1px solid #eee;
+    }
+
+    .spot{
+      position:absolute;
+      border-radius: 999px;
+      border: 2px solid rgba(0,0,0,0.0);
+      background: rgba(0,0,0,0.0);
+      transform: translate(-50%, -50%);
+      cursor: pointer;
+    }
+    .spot.on{
+      border-color: rgba(0,0,0,0.55);
+      background: rgba(0,0,0,0.10);
+    }
+    .spot[data-showlabel="1"]::after{
+      content: attr(data-id);
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 11px;
+      background: rgba(255,255,255,0.9);
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 2px 6px;
+      white-space: nowrap;
+    }
+
+    .hint { font-size: 13px; opacity: 0.8; line-height: 1.35; }
+    code { background:#f6f6f6; padding:2px 6px; border-radius: 
+  </style>
+</head>
+<body>
+  <h1>Sax Diagram Tap Test</h1>
+
+  <div class="card">
+    <div class="pill">Tap keys on your diagram</div>
+
+    <div class="diagramWrap" id="diagramWrap">
+      <img src="sax-diagram.jpg" alt="Saxophone key diagram" />
+      <!-- hotspots inserted here -->
+    </div>
+
+    <div class="btnrow">
+      <button id="toggleLabelsBtn">Show key labels</button>
+      <button id="clearBtn">Clear</button>
+    </div>
+
+    <p class="hint">
+      If taps don’t line up, adjust the numbers in <code>HOTSPOTS</code> (they’re percentages of the image).
+    </p>
+
+    <p class="hint"><b>Currently pressed:</b> <span id="pressedList">—</span></p>
+  </div>
+
+<script>
+  // Keys we’ll eventually use (matches McGill-style sets)
+  const KEY_IDS = [
+    "OCT","LH1","LH2","LH3","RH1","RH2","RH3", "GSHARP",
+    "LOW_Bb","LOW_B","LOW_C","LOW_C#","LOW_Eb",
+    "BIS_Bb","SIDE_Bb","SIDE_C","SIDE_Eb",
+    "FRONT_F","PALM_D","PALM_Eb","PALM_E"
+  ];
+
+  // Hotspots are circles: x/y/r are % of the image box.
+  // These are ROUGH starters — you’ll tweak them to match your exact picture.
+  const HOTSPOTS = [
+    { id:"LH1", x: 44, y: 23, r: 6 },
+    { id:"LH2", x: 44, y: 35, r: 6 },
+    { id:"LH3", x: 44, y: 49, r: 6 },
+    { id:"RH1", x: 44, y: 63, r: 6 },
+    { id:"RH2", x: 44, y: 77, r: 6 },
+    { id:"RH3", x: 44, y: 91, r: 6 },
+
+    { id:"OCT", x: 50, y: 30, r: 3 },
+
+    // You will place these by eye on your diagram:
+    { id:"LOW_Bb", x: 15, y: 87, r: 5 },
+    { id:"LOW_B",  x: 26, y: 89, r: 5 },
+    { id:"LOW_C",  x: 31, y: 94, r: 5 },
+    { id:"LOW_C#", x: 42, y: 89, r: 5 },
+    { id:"LOW_Eb", x: 50, y: 94, r: 5 },
+    { id:"GSHARP", x: 15, y: 82, r: 4 },
+    
+    { id:"BIS_Bb",  x: 52, y: 40, r: 3 },
+    { id:"SIDE_Bb", x: 77, y: 61, r: 4 },
+    { id:"SIDE_C",  x: 77, y: 62, r: 4 },
+    { id:"SIDE_Eb", x: 77, y: 63, r: 4 },
+
+    { id:"FRONT_F", x: 57, y: 10, r: 4 },
+    { id:"PALM_D",  x: 71, y: 17, r: 4 },
+    { id:"PALM_Eb", x: 81, y: 18, r: 4 },
+    { id:"PALM_E",  x: 89, y: 22, r: 4 },
+  ];
+
+  let pressed = new Set();
+  let showLabels = false;
+
+  const wrap = document.getElementById("diagramWrap");
+  const pressedList = document.getElementById("pressedList");
+
+  function buildHotspots() {
+    wrap.querySelectorAll(".spot").forEach(el => el.remove());
+
+    for (const s of HOTSPOTS) {
+      const el = document.createElement("button");
+      el.type = "button";
+      el.className = "spot";
+      el.dataset.id = s.id;
+
+      el.style.left = s.x + "%";
+      el.style.top  = s.y + "%";
+      el.style.width  = (s.r * 2) + "%";
+      el.style.height = (s.r * 2) + "%";
+
+      el.addEventListener("click", (e) => {
+        e.preventDefault();
+        toggleKey(s.id);
+      });
+
+      wrap.appendChild(el);
+    }
+    render();
+  }
+
+  function toggleKey(id){
+    if (pressed.has(id)) pressed.delete(id);
+    else pressed.add(id);
+    render();
+  }
+
+  function render(){
+    wrap.querySelectorAll(".spot").forEach(el => {
+      const id = el.dataset.id;
+      el.classList.toggle("on", pressed.has(id));
+      el.dataset.showlabel = showLabels ? "1" : "0";
+      el.dataset.id = id;
+    });
+
+    const list = [...pressed].sort().join(", ");
+    pressedList.textContent = list || "—";
+  }
+
+  document.getElementById("toggleLabelsBtn").addEventListener("click", () => {
+    showLabels = !showLabels;
+    render();
+  });
+
+  document.getElementById("clearBtn").addEventListener("click", () => {
+    pressed.clear();
+    render();
+  });
+
+  buildHotspots();
+
+  function clearOverlay(){
+  wrap.querySelectorAll(".spot").forEach(el => {
+    el.classList.remove("expected", "wrong");
+  });
+}
+
+/**
+ * Show the “correct” overlay for ONE fingering variant:
+ * - expected keys are marked "expected"
+ * - pressed keys that aren't expected are marked "wrong"
+ */
+}
+</script>
+</body>
+</html>
